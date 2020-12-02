@@ -23,7 +23,7 @@ const double eps = 0.001;
 
 int main (int argc, char *argv[])
 {
-  uint32_t nNodes = 128;//节点数目
+  uint32_t nNodes = 64;//节点数目
   double simTime = 60; //仿真时间
   double interval = 1; //广播的时间间隔
   std::string m_traceFile = "/home/mak/Code/ns-3-allinone/ns-3.30/mobility.tcl";

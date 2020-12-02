@@ -100,11 +100,7 @@ void ASApplication::BroadcastInformation()
 {
     //数据包参数
     TxInfo tx;
-    tx.channelNumber = CCH; 
-    tx.priority = 7;
-    tx.txPowerLevel = 7;
-    tx.dataRate = m_mode;
-    tx.preamble = WIFI_PREAMBLE_LONG;
+    SetTxInfo(tx);
     
     Ptr<Packet> packet = Create <Packet> (m_packetSize);
     
@@ -158,6 +154,35 @@ void ASApplication::UpdateNeighbor (Address addr)
         new_n.last_beacon = Now ();
         m_neighbors.push_back (new_n);
     }
+}
+
+void ASApplication::SetTxInfo(TxInfo &p_tx)
+{
+    p_tx.channelNumber = CCH;
+    p_tx.priority = 7;
+    p_tx.txPowerLevel = 7;
+    p_tx.dataRate = m_mode;
+    p_tx.preamble = WIFI_PREAMBLE_LONG;
+}
+
+void ASApplication::StartElection()
+{   
+    TxInfo tx;
+    SetTxInfo(tx);
+
+    Ptr<Packet> packet = Create <Packet> (m_packetSize);
+    
+    //tag中携带本节点的ID、位置信息、发送时间信息
+    ASDataTag tag;
+    tag.SetNodeId ( GetNode()->GetId() );
+    tag.SetPosition ( GetNode()->GetObject<MobilityModel>()->GetPosition());
+    tag.SetScore(CalcSecScore());
+
+    //将tag加入数据包
+    packet->AddPacketTag (tag);
+
+    //将数据包以 WSMP (0x88dc)格式广播出去
+    m_waveDevice->SendX (packet, Mac48Address::GetBroadcast(), 0x88dc, tx);
 }
 
 void ASApplication::PrintNeighbors ()

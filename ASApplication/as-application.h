@@ -52,6 +52,9 @@ using namespace ns3;
 
             // 计算安全得分
             double CalcSecScore();
+
+            void StartElection();
+            void SetTxInfo(TxInfo & p_tx);
             
             Time m_broadcast_time; //广播的时间间隔
             uint32_t m_packetSize; //广播数据包的大小
