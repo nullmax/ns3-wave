@@ -37,12 +37,15 @@ TypeId ASDataTag::GetInstanceTypeId (void) const
 uint32_t ASDataTag::GetSerializedSize (void) const
 {
 	//对应车辆的位置、发送数据包的时间、车辆的ID
-	return sizeof(Vector) + sizeof (ns3::Time) + sizeof(uint32_t) + sizeof(double);
+	return sizeof(Vector) + sizeof (ns3::Time) + 3 * sizeof(uint32_t) + sizeof(double);
 }
 
 //注意Serialize中的顺序要和Deserialize中的一致
 void ASDataTag::Serialize (TagBuffer i) const
-{
+{	
+	//消息类型
+	i.WriteU32 (m_message_type);
+
 	//发送数据包的时间
 	i.WriteDouble(m_timestamp.GetDouble());
 
@@ -53,6 +56,8 @@ void ASDataTag::Serialize (TagBuffer i) const
 
 	//车辆的ID
 	i.WriteU32(m_nodeId);
+	
+	i.WriteU32(m_role);
 
 	//车辆的安全评分
 	i.WriteDouble(m_CVSS_score);
@@ -61,6 +66,9 @@ void ASDataTag::Serialize (TagBuffer i) const
 
 void ASDataTag::Deserialize (TagBuffer i)
 {
+	//消息类型
+	m_message_type = i.ReadU32();
+
 	//发送数据包的时间
 	m_timestamp =  Time::FromDouble (i.ReadDouble(), Time::NS);;
 
@@ -72,12 +80,24 @@ void ASDataTag::Deserialize (TagBuffer i)
 	//车辆的ID
 	m_nodeId = i.ReadU32();
 
+	m_role = i.ReadU32();
+
 	// 车辆的安全评分
 	m_CVSS_score = i.ReadDouble();
 }
 
 void ASDataTag::Print (std::ostream &os) const
 {
+}
+
+uint32_t ASDataTag::GetMessageType()
+{
+	return m_message_type;
+} 
+
+void ASDataTag::SetMessageType(uint32_t type)
+{
+	m_message_type = type;
 }
 
 uint32_t ASDataTag::GetNodeId() {
@@ -111,6 +131,15 @@ double ASDataTag::GetScore() {
 void ASDataTag::SetScore(double score) {
 	m_CVSS_score = score;
 }
+
+uint32_t ASDataTag::GetRole()
+{
+	return m_role;
 }
 
+void ASDataTag::SetRole (uint32_t role)
+{
+	m_role = role;
+}
 
+} // namespace ns3 end

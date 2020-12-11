@@ -4,6 +4,7 @@
 #include "ns3/core-module.h"
 #include "as-application.h"
 #include "wave-setup.h"
+#include "ns2-node-utility.h"
 
 using namespace ns3;
 
@@ -23,10 +24,20 @@ const double eps = 0.001;
 
 int main (int argc, char *argv[])
 {
-  uint32_t nNodes = 64;//节点数目
-  double simTime = 60; //仿真时间
+  std::string m_traceFile = "/home/mak/Code/ns3-wave/cross/mobility.tcl";
+
+  LogComponentEnable("ASApplicationExample", LOG_LEVEL_INFO);
+  LogComponentEnable("ASApplication", LOG_LEVEL_INFO);
+
+  NS_LOG_INFO ("Parsing mobility file");
+
+  Ns2NodeUtility ns2_utility (m_traceFile);
+
+  uint32_t nNodes = ns2_utility.GetNNodes();//节点数目
+  double simTime = ns2_utility.GetSimulationTime(); //仿真时间
+  // uint32_t nNodes = 60;//节点数目
+  // double simTime = 60; //仿真时间
   double interval = 1; //广播的时间间隔
-  std::string m_traceFile = "/home/mak/Code/ns-3-allinone/ns-3.30/mobility.tcl";
 
   CommandLine cmd;
   cmd.AddValue("nNodes", "Number of vehicle nodes", nNodes);
@@ -38,9 +49,9 @@ int main (int argc, char *argv[])
   nNodes = nNodes == 0 ? 5 : nNodes;
   simTime = simTime < eps ? 60 : simTime;
   interval = interval < eps ? 1 : interval;
+  
 
-  LogComponentEnable("ASApplicationExample", LOG_LEVEL_INFO);
-  LogComponentEnable("ASApplication", LOG_LEVEL_INFO);
+  NS_LOG_INFO ("nNodes: " << nNodes << " simTime: " << simTime );
 
   NS_LOG_INFO ("Creating Nodes");
   NodeContainer nodes;
@@ -73,8 +84,10 @@ int main (int argc, char *argv[])
   {
     Ptr<ASApplication> app_i = CreateObject<ASApplication>();
     app_i->SetBroadcastInterval (Seconds(interval));
-    app_i->SetStartTime (Seconds (0));
-    app_i->SetStopTime (Seconds (simTime));
+    app_i->SetStartTime (Seconds (ns2_utility.GetEntryTimeForNode(i)));
+    app_i->SetStopTime (Seconds (ns2_utility.GetExitTimeForNode(i)));
+    // app_i->SetStartTime (Seconds (0));
+    // app_i->SetStopTime (Seconds (simTime));
     nodes.Get(i)->AddApplication (app_i);
   }
   NS_LOG_INFO ("Application installed");
@@ -82,7 +95,8 @@ int main (int argc, char *argv[])
   Simulator::Stop(Seconds(simTime));
   Simulator::Run();
   
-  std::cout << "Post Simulation: " << std::endl;
+  NS_LOG_INFO ("Post Simulation: ");
+  // std::cout << "Post Simulation: " << std::endl;
   
   for (uint32_t i=0 ; i<nodes.GetN(); i++)
   {

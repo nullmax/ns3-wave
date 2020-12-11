@@ -1,0 +1,1 @@
+cp -r ./ASApplication $NS3_DIR/scratch/ 
