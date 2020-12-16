@@ -22,6 +22,7 @@ public:
 	//tag变量的set和get函数
 	uint32_t GetMessageType();
 	Vector GetPosition(void);
+	Vector GetVelocity(void);
 	uint32_t GetNodeId();
 	uint32_t GetRole();
 	Time GetTimestamp ();
@@ -29,19 +30,12 @@ public:
 
 	void SetMessageType(uint32_t);
 	void SetPosition (Vector pos);
+	void SetVelocity (Vector velocity);
 	void SetNodeId (uint32_t node_id);
 	void SetRole (uint32_t role);
 	void SetTimestamp (Time t);
 	void SetScore(double score);
 
-	static const uint32_t BROADCAST = 0;
-	static const uint32_t REQ_VOTE = 1;
-	static const uint32_t DENY_VOTE = 2;
-	static const uint32_t APROVE_VOTE = 3;
-	static const uint32_t APPOINTMENT = 4;
-	static const uint32_t ACCEPT_APPOINTMENT = 5;
-	static const uint32_t HEARTBEAT = 6;
-	static const uint32_t REPLY_HEARTBEAT = 7;
 
 	ASDataTag();
 	ASDataTag(uint32_t node_id);
@@ -51,6 +45,7 @@ private:
 	uint32_t m_nodeId; //节点的ID
 	uint32_t m_role; //节点当前角色
 	Vector m_currentPosition; //节点的位置
+	Vector m_currentVelocity; // velocity;
 	Time m_timestamp; //数据包发送的时间
 	double m_CVSS_score; // 节点安全评分
 };

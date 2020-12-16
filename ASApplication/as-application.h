@@ -14,7 +14,9 @@ using namespace ns3;
         Address neighbor_mac;
         Time last_beacon;
         uint32_t m_nodeId; //节点的ID
+        uint32_t m_role; //节点的role
         Vector m_currentPosition; //节点的位置
+        Vector m_currentVelocity; // velocity
         double m_CVSS_score; // 节点安全评分
     } NeighborInformation;
 
@@ -61,10 +63,11 @@ using namespace ns3;
             double CalcScore();
 
             void StartElection();
-            void SendHeartBeat();
             void SetTxInfo(TxInfo & p_tx);
-            void SetASDataTag(ASDataTag & tag, uint32_t type);
-            void SendMessage(uint32_t type, const Address & addr);
+            void SetASDataTag(ASDataTag & tag, const uint32_t & type);
+            void UpdateNode(NeighborInformation & ni, ASDataTag & tag);
+            void SendMessage(const uint32_t & type, const Address & addr);
+            bool SameVelocityDirection(Vector vel);
             
             Time m_broadcast_time; //广播的时间间隔
             uint32_t m_packetSize; //广播数据包的大小
@@ -74,20 +77,30 @@ using namespace ns3;
             Time m_time_limit; //移除超过m_time_limit未通信的节点
             WifiMode m_mode; //wifi的模式
             CVSS m_cvss; // CVSS计算模块
+            bool m_recalc_secore; //
+            double m_score; // total score;
             uint32_t m_role; //车群角色
             uint32_t m_vote_count; // 投票计数
             uint32_t m_vote_failure_count; // 竞选失败计数
             uint32_t m_app_id;  //
+            int m_current_superior;  //
 
             static const int minPts = 4;
             static const int minVotes = 2;
-            static uint32_t app_count;
 
             static const uint32_t NOISE = 0;
             static const uint32_t BORDER = 1;
             static const uint32_t CORE = 2;
-            static const uint32_t SECONDARY = 3;
-            static const uint32_t HEAD = 4;
+            static const uint32_t HEAD = 3;
+
+            static const uint32_t BROADCAST = 0;
+            static const uint32_t REQ_VOTE = 1;
+            static const uint32_t DENY_VOTE = 2;
+            static const uint32_t APROVE_VOTE = 3;
+            static const uint32_t APPOINTMENT = 4;
+            static const uint32_t ACCEPT_APPOINTMENT = 5;
+            static const uint32_t HEARTBEAT = 6;
+            static const uint32_t REPLY_HEARTBEAT = 7;
     };
 
 #endif

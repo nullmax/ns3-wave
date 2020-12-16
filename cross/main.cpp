@@ -63,6 +63,8 @@ void vehicle::disp(char * str)
     sprintf(str, "  <vehicle depart=\"%d\" id=\"veh%d\" route=\"route%d\" type=\"Car%c\" color=\"1,0,0\" />\n", id / 10, id, route_id, type2char());
 }
 
+static const uint32_t n_vehicles = 50;
+
 int main(int, char**) {
     string head = R"(<?xml version="1.0" encoding="UTF-8"?>
 <routes>
@@ -83,8 +85,8 @@ int main(int, char**) {
     cout << head << endl;
     cout << endl;
     char str[80];
-    vehicle vs[200];
-    for (int i=0; i < 200; ++i)
+    vehicle vs[n_vehicles];
+    for (int i=0; i < n_vehicles; ++i)
     {
         vs[i].disp(str);
         cout<<str;

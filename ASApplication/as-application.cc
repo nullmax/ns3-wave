@@ -3,8 +3,6 @@
 #include "ns3/simulator.h"
 #include "as-application.h"
 
-uint32_t ASApplication::app_count = 0;
-
 NS_LOG_COMPONENT_DEFINE("ASApplication");
 NS_OBJECT_ENSURE_REGISTERED(ASApplication);
 
@@ -29,8 +27,6 @@ TypeId ASApplication::GetInstanceTypeId() const
 
 ASApplication::ASApplication()
 {
-    m_app_id = app_count++;
-    NS_LOG_INFO("APP" << m_app_id << " started");
     m_broadcast_time = MilliSeconds (1000); 
     m_packetSize = 1000;
     m_time_limit = Seconds (5);
@@ -38,6 +34,8 @@ ASApplication::ASApplication()
     m_role = NOISE;
     m_vote_count = 0;
     m_vote_failure_count = 0;
+    m_recalc_secore = true;
+    m_current_superior = -1;
     m_cvss = CVSS(CVSSMetricAV::Local, CVSSMetricAC::Low, CVSSMetricPRCIA::High, CVSSMetricUI::Required,
                                 CVSSMetricS::Unchanged, CVSSMetricPRCIA::High, CVSSMetricPRCIA::None, CVSSMetricPRCIA::High,
                                 CVSSMetricE::High, CVSSMetricRL::Workaround, CVSSMetricRC::Unknown,
@@ -54,7 +52,7 @@ ASApplication::~ASApplication()
 void ASApplication::StartApplication()
 {   
     Ptr<Node> n = GetNode ();
-    
+    m_app_id = n->GetId();
     for (uint32_t i = 0; i < n->GetNDevices (); i++)
     {
         Ptr<NetDevice> dev = n->GetDevice (i);
@@ -83,15 +81,21 @@ void ASApplication::StartApplication()
         NS_FATAL_ERROR ("There's no WaveNetDevice in your node");
     }
     //周期性检查邻居节点，并移除长时间未通信的节点
-    Simulator::Schedule (Seconds (1), &ASApplication::RemoveOldNeighbors, this);
+    Simulator::Schedule (Seconds (2), &ASApplication::RemoveOldNeighbors, this);
+
+    NS_LOG_INFO("APP" << m_app_id << " started");
 }
 
-
 double ASApplication::CalcScore()
-{
-    double scores[3];
-    m_cvss.CalcScore(scores);
-    return scores[0]+scores[1]+scores[2];
+{   
+    if (m_recalc_secore)
+    {
+        double scores[3];
+        m_cvss.CalcScore(scores);
+        m_score = scores[0]+scores[1]+scores[2] + rand() % 10;
+        m_recalc_secore = false;
+    }
+    return m_score;
 }
 
 void ASApplication::SetBroadcastInterval (Time interval)
@@ -104,9 +108,29 @@ void ASApplication::SetWifiMode (WifiMode mode)
     m_mode = mode;
 }
 
+inline bool SameSign(double x, double y)
+{
+    return (x >= 0 && y >= 0) || (x < 0 && y < 0);
+}
+
+bool ASApplication::SameVelocityDirection(Vector v2)
+{
+    Vector v1 =  GetNode()->GetObject<MobilityModel>()->GetVelocity();
+    return SameSign(v1.x, v2.x) && SameSign(v1.x, v2.x) && SameSign(v1.x, v2.x);
+}
+
+void ASApplication::UpdateNode(NeighborInformation & ni, ASDataTag & tag)
+{
+    ni.m_currentPosition = tag.GetPosition();
+    ni.m_currentVelocity = tag.GetVelocity();
+    ni.m_CVSS_score = tag.GetScore();
+    ni.m_nodeId = tag.GetNodeId();
+    ni.m_role = tag.GetRole();
+}
 
 void ASApplication::UpdateNeighbor (Address addr, ASDataTag tag, bool useTag)
 {
+
     bool found = false;
     
     for (std::list<NeighborInformation>::iterator it = m_neighbors.begin(); it != m_neighbors.end(); it++ )
@@ -117,9 +141,7 @@ void ASApplication::UpdateNeighbor (Address addr, ASDataTag tag, bool useTag)
             found = true;
             if (useTag)
             {
-                it->m_currentPosition = tag.GetPosition();
-                it->m_CVSS_score = tag.GetScore();
-                it->m_nodeId = tag.GetNodeId();
+                UpdateNode(*it, tag);
             }
             break;
         }
@@ -131,9 +153,7 @@ void ASApplication::UpdateNeighbor (Address addr, ASDataTag tag, bool useTag)
         new_n.last_beacon = Now ();
         if (useTag)
         {
-            new_n.m_currentPosition = tag.GetPosition();
-            new_n.m_CVSS_score = tag.GetScore();
-            new_n.m_nodeId = tag.GetNodeId();
+            UpdateNode(new_n, tag);
         }
         m_neighbors.push_back (new_n);
     }
@@ -151,9 +171,7 @@ void ASApplication::UpdateSubordinates (Address addr, ASDataTag tag, bool useTag
             found = true;
             if (useTag)
             {
-                it->m_currentPosition = tag.GetPosition();
-                it->m_CVSS_score = tag.GetScore();
-                it->m_nodeId = tag.GetNodeId();
+                UpdateNode(*it, tag);
             }
             break;
         }
@@ -166,9 +184,7 @@ void ASApplication::UpdateSubordinates (Address addr, ASDataTag tag, bool useTag
         new_n.last_beacon = Now ();
         if (useTag)
         {
-            new_n.m_currentPosition = tag.GetPosition();
-            new_n.m_CVSS_score = tag.GetScore();
-            new_n.m_nodeId = tag.GetNodeId();
+            UpdateNode(new_n, tag);
         }
         m_subordinates.push_back (new_n);
     }
@@ -179,11 +195,15 @@ void ASApplication::RemoveOldNeighbors ()
     auto it = m_neighbors.begin();
     while (it != m_neighbors.end())
     {
-          //获取最后通信时间到现在的时间
+        //获取最后通信时间到现在的时间
         Time last_contact = Now () - it->last_beacon;
 
         if (last_contact >= m_time_limit) 
-        {
+        {   
+            if((it->m_nodeId - m_current_superior) == 0)
+            {
+                m_current_superior = -1;
+            }
             it = m_neighbors.erase (it); // erase返回下一个迭代器
         }    
         else 
@@ -192,55 +212,71 @@ void ASApplication::RemoveOldNeighbors ()
         }
     }
 
-    auto its = m_subordinates.begin();
-    while (its != m_neighbors.end())
+    if (m_current_superior < 0 && m_role != HEAD)
     {
-          //获取最后通信时间到现在的时间
-        Time last_contact = Now () - its->last_beacon;
+        StartElection();
+    }
+
+    // 对下属发送心跳包,移除失效的下属
+    it = m_subordinates.begin();
+    while (it != m_subordinates.end())
+    {
+        //获取最后通信时间到现在的时间
+        Time last_contact = Now () - it->last_beacon;
 
         if (last_contact >= m_time_limit) 
         {
-            its = m_neighbors.erase (its); // erase返回下一个迭代器
+            it = m_subordinates.erase (it); // erase返回下一个迭代器
         }    
         else 
         {
-            ++its;
+            SendMessage(HEARTBEAT, it->neighbor_mac); // 发送心跳包
+            ++it;
         }
     }
 
+    if(m_subordinates.empty())
+    {
+        m_role = m_current_superior > 0 ? BORDER : NOISE;
+        m_vote_count = 0;
+    }
     //周期性检查并移除长时间未通信节点
     Simulator::Schedule (Seconds (1), &ASApplication::RemoveOldNeighbors, this);
 }
 
 void ASApplication::PrintNeighbors ()
 {
-    NS_LOG_INFO ( "NodeId:" << GetNode()->GetId() << " Role: "<< static_cast<int>(m_role) <<" Neighbor Size: " << m_neighbors.size() );
+    NS_LOG_INFO ( "NodeId:" << GetNode()->GetId() << " Role: "<< m_role << " Superior: " << m_current_superior <<" Neighbor Size: " << m_neighbors.size() << " Subordinates size: " << m_subordinates.size() );
     // for (std::list<NeighborInformation>::iterator it = m_neighbors.begin(); it != m_neighbors.end(); it++ )
     // {
-    //     // std::cout << "\t邻居节点的地址: " << it->neighbor_mac << "\t最后通信时间: " << it->last_beacon << std::endl;
-    //     NS_LOG_INFO ( "\t邻居节点的地址: " << it->neighbor_mac << "\t最后通信时间: " << it->last_beacon );
+        // NS_LOG_INFO ( "\t邻居节点的ID: " << it->m_nodeId << " 邻居节点的角色:" << it->m_role << " 最后通信时间: " << it->last_beacon );
     // }
+    for (std::list<NeighborInformation>::iterator it = m_subordinates.begin(); it != m_subordinates.end(); it++ )
+    {
+        NS_LOG_INFO ( "\t下属节点的ID: " << it->m_nodeId << " 下属节点的角色:" << it->m_role << " 最后通信时间: " << it->last_beacon );
+    }
 }
 
-void ASApplication::SetTxInfo(TxInfo &p_tx)
+void ASApplication::SetTxInfo(TxInfo &tx)
 {
-    p_tx.channelNumber = CCH;
-    p_tx.priority = 7;
-    p_tx.txPowerLevel = 7;
-    p_tx.dataRate = m_mode;
-    p_tx.preamble = WIFI_PREAMBLE_LONG;
+    tx.channelNumber = CCH;
+    tx.priority = 7;
+    tx.txPowerLevel = 7;
+    tx.dataRate = m_mode;
+    tx.preamble = WIFI_PREAMBLE_LONG;
 }
 
-void ASApplication::SetASDataTag(ASDataTag & tag, uint32_t type)
+void ASApplication::SetASDataTag(ASDataTag & tag, const uint32_t & type)
 {
     tag.SetMessageType(type);
     tag.SetNodeId ( GetNode()->GetId() );
     tag.SetPosition ( GetNode()->GetObject<MobilityModel>()->GetPosition());
+    tag.SetVelocity ( GetNode()->GetObject<MobilityModel>()->GetVelocity());
     tag.SetScore(CalcScore());
     tag.SetRole(m_role);
 }
 
-void ASApplication::SendMessage(uint32_t msg_type, const Address & addr)
+void ASApplication::SendMessage(const uint32_t & msg_type, const Address & addr)
 {
     TxInfo tx;
     SetTxInfo(tx);
@@ -259,21 +295,7 @@ void ASApplication::SendMessage(uint32_t msg_type, const Address & addr)
 
 void ASApplication::BroadcastInformation()
 {
-    //数据包参数
-    TxInfo tx;
-    SetTxInfo(tx);
-    
-    Ptr<Packet> packet = Create <Packet> (m_packetSize);
-    
-    //tag中携带本节点的ID、位置信息、发送时间信息
-    ASDataTag tag;
-    SetASDataTag(tag, ASDataTag::BROADCAST);
-
-    //将tag加入数据包
-    packet->AddPacketTag (tag);
-
-    //将数据包以 WSMP (0x88dc)格式广播出去
-    m_waveDevice->SendX (packet, Mac48Address::GetBroadcast(), 0x88dc, tx);
+    SendMessage(BROADCAST, Mac48Address::GetBroadcast());
 
     //每m_broadcast_time广播一次
     Simulator::Schedule (m_broadcast_time, &ASApplication::BroadcastInformation, this);
@@ -284,7 +306,6 @@ void ASApplication::StartElection()
     switch (m_role)
     {
     case HEAD:
-    case SECONDARY:
         return;
         break;
     case CORE:
@@ -302,25 +323,9 @@ void ASApplication::StartElection()
     }
 
     m_role = CORE;
-    
-    SendMessage(ASDataTag::REQ_VOTE, Mac48Address::GetBroadcast());
+    m_vote_count = 0;
 
-    Simulator::Schedule (Seconds (2), &ASApplication::StartElection, this);
-}
-
-void ASApplication::SendHeartBeat()
-{
-    if(!(m_role==HEAD || m_role==SECONDARY))
-    {
-        return;
-    }
-    
-    for (auto it = m_subordinates.begin(); it != m_subordinates.end(); ++it)
-    {
-        SendMessage(ASDataTag::HEARTBEAT, it->neighbor_mac);
-    }
-
-    Simulator::Schedule (Seconds (2), &ASApplication::SendHeartBeat, this);
+    SendMessage(REQ_VOTE, Mac48Address::GetBroadcast());
 }
 
 bool ASApplication::ReceivePacket (Ptr<NetDevice> device, Ptr<const Packet> packet,uint16_t protocol, const Address &sender)
@@ -330,55 +335,94 @@ bool ASApplication::ReceivePacket (Ptr<NetDevice> device, Ptr<const Packet> pack
 
     if (useTag)
     {   
+        if(!SameVelocityDirection(tag.GetVelocity()))
+        {   
+            // 方向不同，不是邻居
+            return true;
+        }
+        NS_LOG_INFO ("ID: " << m_app_id << " Role: " << m_role << " Superior: " << m_current_superior << " 消息发送方的ID: " << tag.GetNodeId() << " 消息类型: " << tag.GetMessageType() << " 消息发送方的位置 " << tag.GetPosition() << " 消息发送时间: " << tag.GetTimestamp() << " 消息延迟="<< Now()-tag.GetTimestamp() << " CVSS=" << tag.GetScore());
+
         bool replyMessage = false;
         uint32_t message_type = 0;
 
         switch (tag.GetMessageType())
         {
-        case ASDataTag::BROADCAST:
-            NS_LOG_INFO ("\t消息发送方的ID: " << tag.GetNodeId() << "\t消息类型: " << tag.GetMessageType() << "\t消息发送方的位置 " << tag.GetPosition() 
-                        << "\t消息发送时间: " << tag.GetTimestamp() << "\t消息延迟="<< Now()-tag.GetTimestamp() << "\tCVSS=" << tag.GetScore());
+        case BROADCAST:
+            // nothing to do yet
             break;
-        case ASDataTag::REQ_VOTE: 
-            // NS_LOG_INFO ( GetNode()->GetId() << "\t消息发送方的ID: " << tag.GetNodeId() << "\t消息类型: " << tag.GetMessageType() << "\t消息发送方的位置 " << tag.GetPosition() 
-                        // << "\t消息发送时间: " << tag.GetTimestamp() << "\t消息延迟="<< Now()-tag.GetTimestamp() << "\tCVSS=" << tag.GetScore());
+        case REQ_VOTE: 
+            replyMessage = true;                
             switch (m_role)
             {
             case CORE:
-            case SECONDARY:
-                replyMessage = true;                
-                message_type = CalcScore() > tag.GetScore() ? ASDataTag::DENY_VOTE : ASDataTag::APROVE_VOTE;
+                message_type = CalcScore() > tag.GetScore() ? DENY_VOTE : APROVE_VOTE;
                 break;
             case HEAD:
-                replyMessage = true;
                 if(CalcScore() > tag.GetScore())
                 {
-                    message_type = ASDataTag::APPOINTMENT;
-                    ++m_vote_count;
+                    message_type = APPOINTMENT;
                 }
                 else
                 {
-                    message_type = ASDataTag::APROVE_VOTE;
-                    m_role = BORDER;
-                    m_subordinates.clear();
+                    message_type = APROVE_VOTE;
+                    m_role = CORE;
+                    m_vote_count = 0;
                 }
                 break;
             default:
                 m_role = BORDER;
-                // NS_LOG_INFO ("Become Border");
+                m_vote_count = 0;
+                if(m_current_superior < 0)
+                {
+                    message_type = APROVE_VOTE;
+                    m_current_superior = tag.GetNodeId();
+                }
+                else
+                {
+                    message_type = DENY_VOTE;
+                }
+                // NS_LOG_INFO ("Noise Become Border");
                 break;
             }
             break;
-        case ASDataTag::DENY_VOTE:
+        case DENY_VOTE:
             // nothing to do yet
             break;
-        case ASDataTag::APROVE_VOTE:
-            m_role = ++m_vote_count > (minVotes - m_vote_failure_count) ? HEAD : m_role;
-            UpdateSubordinates (sender, tag, useTag);
+        case APROVE_VOTE:
+            if(m_role >= CORE)
+            {
+                ++m_vote_count;
+                if(m_role == CORE)
+                {
+                    m_role = m_vote_count > (minVotes - m_vote_failure_count) ? HEAD : m_role;
+                }
+                UpdateSubordinates (sender, tag, useTag);
+            }
             break;
-        case ASDataTag::APPOINTMENT:
-            m_role = SECONDARY;
-
+        case APPOINTMENT:
+            if(m_role == CORE)
+            {
+                replyMessage = true;
+                message_type = ACCEPT_APPOINTMENT;
+            }
+            break;
+        case ACCEPT_APPOINTMENT:
+            if(m_role == HEAD)
+            {
+                ++m_vote_count;
+                UpdateSubordinates(sender, tag, useTag);
+            }
+            break;
+        case HEARTBEAT:
+            replyMessage = true;
+            message_type = REPLY_HEARTBEAT;
+            m_current_superior = tag.GetNodeId();
+            break;
+        case REPLY_HEARTBEAT:
+            if (m_role >= CORE)
+            {
+                UpdateSubordinates(sender, tag, useTag);
+            }
             break;
         default:
             break;

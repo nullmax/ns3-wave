@@ -51,7 +51,7 @@ int main (int argc, char *argv[])
   interval = interval < eps ? 1 : interval;
   
 
-  NS_LOG_INFO ("nNodes: " << nNodes << " simTime: " << simTime );
+  NS_LOG_INFO ("nNodes: " << nNodes << " simTime: " << simTime << " interval: " << interval);
 
   NS_LOG_INFO ("Creating Nodes");
   NodeContainer nodes;
@@ -84,10 +84,10 @@ int main (int argc, char *argv[])
   {
     Ptr<ASApplication> app_i = CreateObject<ASApplication>();
     app_i->SetBroadcastInterval (Seconds(interval));
-    app_i->SetStartTime (Seconds (ns2_utility.GetEntryTimeForNode(i)));
-    app_i->SetStopTime (Seconds (ns2_utility.GetExitTimeForNode(i)));
-    // app_i->SetStartTime (Seconds (0));
-    // app_i->SetStopTime (Seconds (simTime));
+    // app_i->SetStartTime (Seconds (ns2_utility.GetEntryTimeForNode(i)));
+    // app_i->SetStopTime (Seconds (ns2_utility.GetExitTimeForNode(i)));
+    app_i->SetStartTime (Seconds (110));
+    app_i->SetStopTime (Seconds (simTime));
     nodes.Get(i)->AddApplication (app_i);
   }
   NS_LOG_INFO ("Application installed");

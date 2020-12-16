@@ -37,7 +37,7 @@ TypeId ASDataTag::GetInstanceTypeId (void) const
 uint32_t ASDataTag::GetSerializedSize (void) const
 {
 	//对应车辆的位置、发送数据包的时间、车辆的ID
-	return sizeof(Vector) + sizeof (ns3::Time) + 3 * sizeof(uint32_t) + sizeof(double);
+	return sizeof(Vector) + sizeof(Vector) + sizeof (ns3::Time) + 3 * sizeof(uint32_t) + sizeof(double);
 }
 
 //注意Serialize中的顺序要和Deserialize中的一致
@@ -53,6 +53,11 @@ void ASDataTag::Serialize (TagBuffer i) const
 	i.WriteDouble (m_currentPosition.x);
 	i.WriteDouble (m_currentPosition.y);
 	i.WriteDouble (m_currentPosition.z);
+
+	//车辆的速度
+	i.WriteDouble (m_currentVelocity.x);
+	i.WriteDouble (m_currentVelocity.y);
+	i.WriteDouble (m_currentVelocity.z);
 
 	//车辆的ID
 	i.WriteU32(m_nodeId);
@@ -76,6 +81,11 @@ void ASDataTag::Deserialize (TagBuffer i)
 	m_currentPosition.x = i.ReadDouble();
 	m_currentPosition.y = i.ReadDouble(); 
 	m_currentPosition.z = i.ReadDouble();
+
+	//车辆的速度
+	m_currentVelocity.x = i.ReadDouble();
+	m_currentVelocity.y = i.ReadDouble(); 
+	m_currentVelocity.z = i.ReadDouble();
 
 	//车辆的ID
 	m_nodeId = i.ReadU32();
@@ -140,6 +150,14 @@ uint32_t ASDataTag::GetRole()
 void ASDataTag::SetRole (uint32_t role)
 {
 	m_role = role;
+}
+
+Vector ASDataTag::GetVelocity(void) {
+	return m_currentVelocity;
+}
+
+void ASDataTag::SetVelocity(Vector velocity) {
+	m_currentVelocity = velocity;
 }
 
 } // namespace ns3 end
