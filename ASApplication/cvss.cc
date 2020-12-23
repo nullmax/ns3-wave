@@ -1,7 +1,6 @@
 #include "cvss.h"
 #include <cmath>
 
-using namespace ns3;
 
 double CVSS::exp_coef = 8.22;
 double CVSS::scope_coef = 1.08;

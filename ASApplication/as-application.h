@@ -43,7 +43,7 @@ using namespace ns3;
             void UpdateNeighbor (Address addr, ASDataTag tag, bool useTag);
 
             //收到数据包后更新下属节点
-            void UpdateSubordinates (Address addr, ASDataTag tag, bool useTag);
+            void UpdateSubordinates (Address addr, ASDataTag tag);
             
             //打印邻居节点
             void PrintNeighbors ();
@@ -54,6 +54,13 @@ using namespace ns3;
             //移除长时间未通信节点
             void RemoveOldNeighbors ();
 
+            static uint32_t m_head_count;
+            static uint32_t m_head_liveness_sum;
+            static uint32_t m_core_count;
+            static uint32_t m_core_liveness_sum;
+            static uint32_t m_border_count;
+            static uint32_t m_border_liveness_sum;
+            static uint32_t m_noise_liveness_sum;
 
         private:
             //StartApplication函数是应用启动后第一个调用的函数
@@ -66,8 +73,13 @@ using namespace ns3;
             void SetTxInfo(TxInfo & p_tx);
             void SetASDataTag(ASDataTag & tag, const uint32_t & type);
             void UpdateNode(NeighborInformation & ni, ASDataTag & tag);
-            void SendMessage(const uint32_t & type, const Address & addr);
+            void SendMessage(const uint32_t type, const Address & addr);
             bool SameVelocityDirection(Vector vel);
+
+            void NoiseHandle(ASDataTag & tag, const Address & addr);
+            void BorderHandle(ASDataTag & tag, const Address & addr);
+            void CoreHandle(ASDataTag & tag, const Address & addr);
+            void HeadHandle(ASDataTag & tag, const Address & addr);
             
             Time m_broadcast_time; //广播的时间间隔
             uint32_t m_packetSize; //广播数据包的大小
@@ -83,9 +95,13 @@ using namespace ns3;
             uint32_t m_vote_count; // 投票计数
             uint32_t m_vote_failure_count; // 竞选失败计数
             uint32_t m_app_id;  //
+            uint32_t m_head_liveness;
+            uint32_t m_core_liveness;
+            uint32_t m_border_liveness;
+            uint32_t m_noise_liveness;
             int m_current_superior;  //
 
-            static const int minPts = 4;
+            static const int minPts = 5;
             static const int minVotes = 2;
 
             static const uint32_t NOISE = 0;
@@ -97,10 +113,8 @@ using namespace ns3;
             static const uint32_t REQ_VOTE = 1;
             static const uint32_t DENY_VOTE = 2;
             static const uint32_t APROVE_VOTE = 3;
-            static const uint32_t APPOINTMENT = 4;
-            static const uint32_t ACCEPT_APPOINTMENT = 5;
-            static const uint32_t HEARTBEAT = 6;
-            static const uint32_t REPLY_HEARTBEAT = 7;
+            static const uint32_t HEARTBEAT = 4;
+            static const uint32_t REPLY_HEARTBEAT = 5;
     };
 
 #endif

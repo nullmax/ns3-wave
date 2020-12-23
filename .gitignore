@@ -1,4 +1,5 @@
-trace.xml
+trace*.xml
 *.tcl
 .vscode/
 build/
+cross/cross*/

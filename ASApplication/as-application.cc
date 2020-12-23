@@ -3,6 +3,14 @@
 #include "ns3/simulator.h"
 #include "as-application.h"
 
+uint32_t ASApplication::m_head_count = 0;
+uint32_t ASApplication::m_head_liveness_sum = 0;
+uint32_t ASApplication::m_core_count = 0;
+uint32_t ASApplication::m_core_liveness_sum = 0;
+uint32_t ASApplication::m_border_count = 0;
+uint32_t ASApplication::m_border_liveness_sum = 0;
+uint32_t ASApplication::m_noise_liveness_sum = 0;
+
 NS_LOG_COMPONENT_DEFINE("ASApplication");
 NS_OBJECT_ENSURE_REGISTERED(ASApplication);
 
@@ -32,6 +40,10 @@ ASApplication::ASApplication()
     m_time_limit = Seconds (5);
     m_mode = WifiMode("OfdmRate6MbpsBW10MHz");
     m_role = NOISE;
+    m_head_liveness = 0;
+    m_core_liveness = 0;
+    m_border_liveness = 0;
+    m_noise_liveness = 0;
     m_vote_count = 0;
     m_vote_failure_count = 0;
     m_recalc_secore = true;
@@ -46,7 +58,10 @@ ASApplication::ASApplication()
 
 ASApplication::~ASApplication()
 {
-
+    m_head_liveness_sum += m_head_liveness;
+    m_core_liveness_sum += m_core_liveness;
+    m_border_liveness_sum += m_border_liveness;
+    m_noise_liveness_sum += m_noise_liveness;
 }
 
 void ASApplication::StartApplication()
@@ -70,7 +85,8 @@ void ASApplication::StartApplication()
     {
         //设置随机数
         Ptr<UniformRandomVariable> rand = CreateObject<UniformRandomVariable> ();
-        Time offset = MicroSeconds (m_app_id * 3);
+        // Time offset = MicroSeconds (m_app_id * 3);
+        Time offset = MicroSeconds (rand->GetValue(0,1000));
         //m_broadcast_time秒钟后调用函数BroadcastInformation
         Simulator::Schedule (m_broadcast_time + offset, &ASApplication::BroadcastInformation, this);
 
@@ -81,7 +97,7 @@ void ASApplication::StartApplication()
         NS_FATAL_ERROR ("There's no WaveNetDevice in your node");
     }
     //周期性检查邻居节点，并移除长时间未通信的节点
-    Simulator::Schedule (Seconds (2), &ASApplication::RemoveOldNeighbors, this);
+    Simulator::Schedule (Seconds (1), &ASApplication::RemoveOldNeighbors, this);
 
     NS_LOG_INFO("APP" << m_app_id << " started");
 }
@@ -92,7 +108,7 @@ double ASApplication::CalcScore()
     {
         double scores[3];
         m_cvss.CalcScore(scores);
-        m_score = scores[0]+scores[1]+scores[2] + rand() % 10;
+        m_score = scores[0]+scores[1]+scores[2] + rand() % 100;
         m_recalc_secore = false;
     }
     return m_score;
@@ -159,7 +175,7 @@ void ASApplication::UpdateNeighbor (Address addr, ASDataTag tag, bool useTag)
     }
 }
 
-void ASApplication::UpdateSubordinates (Address addr, ASDataTag tag, bool useTag)
+void ASApplication::UpdateSubordinates (Address addr, ASDataTag tag)
 {
     bool found = false;
     
@@ -169,10 +185,7 @@ void ASApplication::UpdateSubordinates (Address addr, ASDataTag tag, bool useTag
         {
             it->last_beacon = Now();
             found = true;
-            if (useTag)
-            {
-                UpdateNode(*it, tag);
-            }
+            UpdateNode(*it, tag);
             break;
         }
     }
@@ -182,10 +195,7 @@ void ASApplication::UpdateSubordinates (Address addr, ASDataTag tag, bool useTag
         NeighborInformation new_n;
         new_n.neighbor_mac = addr;
         new_n.last_beacon = Now ();
-        if (useTag)
-        {
-            UpdateNode(new_n, tag);
-        }
+        UpdateNode(new_n, tag);
         m_subordinates.push_back (new_n);
     }
 }
@@ -212,11 +222,6 @@ void ASApplication::RemoveOldNeighbors ()
         }
     }
 
-    if (m_current_superior < 0 && m_role != HEAD)
-    {
-        StartElection();
-    }
-
     // 对下属发送心跳包,移除失效的下属
     it = m_subordinates.begin();
     while (it != m_subordinates.end())
@@ -237,8 +242,33 @@ void ASApplication::RemoveOldNeighbors ()
 
     if(m_subordinates.empty())
     {
-        m_role = m_current_superior > 0 ? BORDER : NOISE;
+        if(m_current_superior > 0)
+        {
+            // m_role = BORDER;
+            // ++m_border_count;
+        }
+        else
+        {
+            m_role = NOISE;
+        }
         m_vote_count = 0;
+    }
+
+    NS_LOG_INFO("Node: " << m_app_id << " Time: " << Now().GetSeconds() << " Subordinates:" << m_subordinates.size());
+    switch (m_role)
+    {
+    case HEAD:
+        ++m_head_liveness;
+        break;
+    case CORE:
+        ++m_core_liveness;
+        break;
+    case BORDER:
+        ++m_border_liveness;
+        break;
+    default:
+        ++m_noise_liveness;
+        break;
     }
     //周期性检查并移除长时间未通信节点
     Simulator::Schedule (Seconds (1), &ASApplication::RemoveOldNeighbors, this);
@@ -246,7 +276,7 @@ void ASApplication::RemoveOldNeighbors ()
 
 void ASApplication::PrintNeighbors ()
 {
-    NS_LOG_INFO ( "NodeId:" << GetNode()->GetId() << " Role: "<< m_role << " Superior: " << m_current_superior <<" Neighbor Size: " << m_neighbors.size() << " Subordinates size: " << m_subordinates.size() );
+    NS_LOG_INFO ( "NodeId: " << GetNode()->GetId() << " Role: "<< m_role << " Superior: " << m_current_superior <<" Neighbor Size: " << m_neighbors.size() << " Subordinates size: " << m_subordinates.size() );
     // for (std::list<NeighborInformation>::iterator it = m_neighbors.begin(); it != m_neighbors.end(); it++ )
     // {
         // NS_LOG_INFO ( "\t邻居节点的ID: " << it->m_nodeId << " 邻居节点的角色:" << it->m_role << " 最后通信时间: " << it->last_beacon );
@@ -276,7 +306,7 @@ void ASApplication::SetASDataTag(ASDataTag & tag, const uint32_t & type)
     tag.SetRole(m_role);
 }
 
-void ASApplication::SendMessage(const uint32_t & msg_type, const Address & addr)
+void ASApplication::SendMessage(const uint32_t msg_type, const Address & addr)
 {
     TxInfo tx;
     SetTxInfo(tx);
@@ -315,17 +345,15 @@ void ASApplication::StartElection()
         break;
     }
     
-    int n = m_neighbors.size(); // 邻居的数量就是RangeQuery的结果
-    if (n < minPts)
-    {   
-        // m_role保持初始值Noise
-        return;
-    }
-
-    m_role = CORE;
     m_vote_count = 0;
+    // 邻居的数量就是密度
+    if (m_current_superior < 0 && m_neighbors.size() >= minPts)
+    {   
+        SendMessage(REQ_VOTE, Mac48Address::GetBroadcast());
+    }
+    // else m_role保持初始值Noise
 
-    SendMessage(REQ_VOTE, Mac48Address::GetBroadcast());
+    Simulator::Schedule (Seconds(3), &ASApplication::StartElection, this);
 }
 
 bool ASApplication::ReceivePacket (Ptr<NetDevice> device, Ptr<const Packet> packet,uint16_t protocol, const Address &sender)
@@ -337,103 +365,240 @@ bool ASApplication::ReceivePacket (Ptr<NetDevice> device, Ptr<const Packet> pack
     {   
         if(!SameVelocityDirection(tag.GetVelocity()))
         {   
-            // 方向不同，不是邻居
+            // 方向不同，不是邻居，也不是下属
             return true;
         }
-        NS_LOG_INFO ("ID: " << m_app_id << " Role: " << m_role << " Superior: " << m_current_superior << " 消息发送方的ID: " << tag.GetNodeId() << " 消息类型: " << tag.GetMessageType() << " 消息发送方的位置 " << tag.GetPosition() << " 消息发送时间: " << tag.GetTimestamp() << " 消息延迟="<< Now()-tag.GetTimestamp() << " CVSS=" << tag.GetScore());
+        // NS_LOG_INFO ("ID: " << m_app_id << " Role: " << m_role << " Superior: " << m_current_superior << " 消息发送方的ID: " << tag.GetNodeId() << " 消息类型: " << tag.GetMessageType() << " 消息发送方的位置 " << tag.GetPosition() << " 消息发送时间: " << tag.GetTimestamp() << " 消息延迟="<< Now()-tag.GetTimestamp() << " CVSS=" << tag.GetScore());
 
-        bool replyMessage = false;
-        uint32_t message_type = 0;
-
-        switch (tag.GetMessageType())
+        switch (m_role)
         {
-        case BROADCAST:
-            // nothing to do yet
+        case NOISE:
+            NoiseHandle(tag, sender);
             break;
-        case REQ_VOTE: 
-            replyMessage = true;                
-            switch (m_role)
-            {
-            case CORE:
-                message_type = CalcScore() > tag.GetScore() ? DENY_VOTE : APROVE_VOTE;
-                break;
-            case HEAD:
-                if(CalcScore() > tag.GetScore())
-                {
-                    message_type = APPOINTMENT;
-                }
-                else
-                {
-                    message_type = APROVE_VOTE;
-                    m_role = CORE;
-                    m_vote_count = 0;
-                }
-                break;
-            default:
-                m_role = BORDER;
-                m_vote_count = 0;
-                if(m_current_superior < 0)
-                {
-                    message_type = APROVE_VOTE;
-                    m_current_superior = tag.GetNodeId();
-                }
-                else
-                {
-                    message_type = DENY_VOTE;
-                }
-                // NS_LOG_INFO ("Noise Become Border");
-                break;
-            }
+        case BORDER:
+            BorderHandle(tag, sender);
             break;
-        case DENY_VOTE:
-            // nothing to do yet
+        case CORE:
+            CoreHandle(tag, sender);
             break;
-        case APROVE_VOTE:
-            if(m_role >= CORE)
-            {
-                ++m_vote_count;
-                if(m_role == CORE)
-                {
-                    m_role = m_vote_count > (minVotes - m_vote_failure_count) ? HEAD : m_role;
-                }
-                UpdateSubordinates (sender, tag, useTag);
-            }
-            break;
-        case APPOINTMENT:
-            if(m_role == CORE)
-            {
-                replyMessage = true;
-                message_type = ACCEPT_APPOINTMENT;
-            }
-            break;
-        case ACCEPT_APPOINTMENT:
-            if(m_role == HEAD)
-            {
-                ++m_vote_count;
-                UpdateSubordinates(sender, tag, useTag);
-            }
-            break;
-        case HEARTBEAT:
-            replyMessage = true;
-            message_type = REPLY_HEARTBEAT;
-            m_current_superior = tag.GetNodeId();
-            break;
-        case REPLY_HEARTBEAT:
-            if (m_role >= CORE)
-            {
-                UpdateSubordinates(sender, tag, useTag);
-            }
+        case HEAD:
+            HeadHandle(tag, sender);
             break;
         default:
             break;
-        }
-        
-        if (replyMessage)
-        {
-            SendMessage(message_type, sender);
         }
     }     
 
     UpdateNeighbor (sender, tag, useTag);
     return true;
+}
+
+void ASApplication::NoiseHandle(ASDataTag & tag, const Address & addr)
+{
+    bool replyMessage = false;
+    uint32_t message_type = 0;
+
+    switch (tag.GetMessageType())
+    {
+    case BROADCAST:
+        break;
+    case REQ_VOTE: 
+        replyMessage = true;                
+        m_role = BORDER;
+        ++m_border_count;
+        m_vote_count = 0;
+        if(m_current_superior < 0 && (CalcScore() < tag.GetScore() || tag.GetRole() >= CORE))
+        {
+            message_type = APROVE_VOTE;
+            m_current_superior = tag.GetNodeId();
+        }
+        else
+        {
+            message_type = DENY_VOTE;
+        }
+        // NS_LOG_INFO ("Noise Become Border");
+        break;
+    case DENY_VOTE:
+        break;
+    case APROVE_VOTE:
+        ++m_vote_count;
+        if(m_vote_count >= m_subordinates.size() / 2)
+        {
+            m_role = CORE;
+            ++m_core_count;
+        }
+        UpdateSubordinates (addr, tag);
+        break;
+    case HEARTBEAT:
+        if(tag.GetRole() >= CORE)
+        {
+            replyMessage = true;
+            message_type = REPLY_HEARTBEAT;
+            m_current_superior = tag.GetNodeId();
+        }
+        break;
+    case REPLY_HEARTBEAT:
+        break;
+    default:
+        break;
+    }
+    
+    if (replyMessage)
+    {
+        SendMessage(message_type, addr);
+    }
+}
+
+void ASApplication::BorderHandle(ASDataTag & tag, const Address & addr)
+{
+    bool replyMessage = false;
+    uint32_t message_type = 0;
+
+    switch (tag.GetMessageType())
+    {
+    case BROADCAST:
+        break;
+    case REQ_VOTE: 
+        replyMessage = true;                
+        m_vote_count = 0;
+        if(m_current_superior < 0 && (CalcScore() < tag.GetScore() || tag.GetRole() >= CORE))
+        {
+            message_type = APROVE_VOTE;
+            m_current_superior = tag.GetNodeId();
+        }
+        else
+        {
+            message_type = DENY_VOTE;
+        }
+        break;
+    case DENY_VOTE:
+        break;
+    case APROVE_VOTE:
+        ++m_vote_count;
+        if(m_vote_count >= m_subordinates.size() / 2)
+        {
+            m_role = CORE;
+            ++m_core_count;
+        }
+        UpdateSubordinates (addr, tag);
+        break;
+    case HEARTBEAT:
+        if(tag.GetRole() >= CORE)
+        {
+            replyMessage = true;
+            message_type = REPLY_HEARTBEAT;
+            m_current_superior = tag.GetNodeId();
+        }
+        break;
+    case REPLY_HEARTBEAT:
+        break;
+    default:
+        break;
+    }
+    
+    if (replyMessage)
+    {
+        SendMessage(message_type, addr);
+    }
+}
+
+void ASApplication::CoreHandle(ASDataTag & tag, const Address & addr)
+{
+    bool replyMessage = false;
+    uint32_t message_type = 0;
+
+    switch (tag.GetMessageType())
+    {
+    case BROADCAST:
+        break;
+    case REQ_VOTE: 
+        replyMessage = true;                
+        if(CalcScore() > tag.GetScore())
+        {
+            message_type = DENY_VOTE;
+        }
+        else
+        {
+            message_type = APROVE_VOTE;
+        }
+        break;
+    case DENY_VOTE:
+        break;
+    case APROVE_VOTE:
+        if(tag.GetRole() >= CORE)
+        {
+            ++m_vote_count;
+        }
+        if(m_vote_count >= (minVotes - m_vote_failure_count))
+        {
+            m_role = HEAD;
+            ++m_head_count;
+            m_current_superior = -1;
+        }
+        UpdateSubordinates (addr, tag);
+        break;
+    case HEARTBEAT:
+        if(tag.GetRole() > CORE)
+        {
+            replyMessage = true;
+            message_type = REPLY_HEARTBEAT;
+            m_current_superior = tag.GetNodeId();
+        }
+        break;
+    case REPLY_HEARTBEAT:
+        UpdateSubordinates(addr, tag);
+        break;
+    default:
+        break;
+    }
+    
+    if (replyMessage)
+    {
+        SendMessage(message_type, addr);
+    }
+}
+
+void ASApplication::HeadHandle(ASDataTag & tag, const Address & addr)
+{
+    bool replyMessage = false;
+    uint32_t message_type = 0;
+
+    switch (tag.GetMessageType())
+    {
+    case BROADCAST:
+        break;
+    case REQ_VOTE: 
+        replyMessage = true;                
+        if(CalcScore() > tag.GetScore())
+        {
+            message_type = DENY_VOTE;
+        }
+        else
+        {
+            message_type = APROVE_VOTE;
+            m_role = CORE;
+            ++m_core_count;
+            m_current_superior = -1;
+            m_vote_count = 0;
+        }
+        break;
+    case DENY_VOTE:
+        break;
+    case APROVE_VOTE:
+        ++m_vote_count;
+        UpdateSubordinates (addr, tag);
+        break;
+    case HEARTBEAT:
+        break;
+    case REPLY_HEARTBEAT:
+        UpdateSubordinates(addr, tag);
+        break;
+    default:
+        break;
+    }
+    
+    if (replyMessage)
+    {
+        SendMessage(message_type, addr);
+    }   
 }
