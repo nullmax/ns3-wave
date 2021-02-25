@@ -11,6 +11,8 @@ uint32_t ASApplication::m_border_count = 0;
 uint32_t ASApplication::m_border_liveness_sum = 0;
 uint32_t ASApplication::m_noise_liveness_sum = 0;
 
+uint32_t ASApplication::m_msg_count = 0;
+
 NS_LOG_COMPONENT_DEFINE("ASApplication");
 NS_OBJECT_ENSURE_REGISTERED(ASApplication);
 
@@ -48,12 +50,7 @@ ASApplication::ASApplication()
     m_vote_failure_count = 0;
     m_recalc_secore = true;
     m_current_superior = -1;
-    m_cvss = CVSS(CVSSMetricAV::Local, CVSSMetricAC::Low, CVSSMetricPRCIA::High, CVSSMetricUI::Required,
-                                CVSSMetricS::Unchanged, CVSSMetricPRCIA::High, CVSSMetricPRCIA::None, CVSSMetricPRCIA::High,
-                                CVSSMetricE::High, CVSSMetricRL::Workaround, CVSSMetricRC::Unknown,
-                                CVSSMetricCIAR::High, CVSSMetricCIAR::High, CVSSMetricCIAR::Medium,
-                                CVSSMetricAV::Local, CVSSMetricAC::Low, CVSSMetricPRCIA::High, CVSSMetricUI::None,
-                                CVSSMetricS::Changed, CVSSMetricPRCIA::None, CVSSMetricPRCIA::High, CVSSMetricPRCIA::Low);
+    m_score_new = 0;
 }
 
 ASApplication::~ASApplication()
@@ -68,6 +65,27 @@ void ASApplication::StartApplication()
 {   
     Ptr<Node> n = GetNode ();
     m_app_id = n->GetId();
+    srand(m_app_id);
+    int rand_tmp = rand() % 10;
+    m_ell = rand_tmp < 3 ? 1 : (rand_tmp < 7 ? 2 : 3);
+
+    rand_tmp = rand() % 10;
+    CVSSMetricRL rl = rand_tmp < 3 ? CVSSMetricRL::TemporaryFix : CVSSMetricRL::OfficialFix;
+    rand_tmp = rand() % 10;
+    CVSSMetricUI mui = rand_tmp < 3 ? CVSSMetricUI::None : CVSSMetricUI::Required;
+    rand_tmp = rand() % 10;
+    CVSSMetricPRCIA mc = rand_tmp < 9 ? CVSSMetricPRCIA::Low : CVSSMetricPRCIA::High;
+    rand_tmp = rand() % 10;
+    CVSSMetricPRCIA mi = rand_tmp < 7 ? CVSSMetricPRCIA::Low : CVSSMetricPRCIA::High;
+    rand_tmp = rand() % 10;
+    CVSSMetricPRCIA ma = rand_tmp < 7 ? CVSSMetricPRCIA::Low : CVSSMetricPRCIA::High;
+    m_cvss = CVSS(CVSSMetricAV::Adjacent, CVSSMetricAC::High, CVSSMetricPRCIA::High, CVSSMetricUI::Required,
+                                CVSSMetricS::Changed, CVSSMetricPRCIA::Low, CVSSMetricPRCIA::Low, CVSSMetricPRCIA::Low,
+                                CVSSMetricE::Unproven, rl, CVSSMetricRC::NotDefined,
+                                CVSSMetricCIAR::High, CVSSMetricCIAR::High, CVSSMetricCIAR::Medium,
+                                CVSSMetricAV::Local, CVSSMetricAC::Low, CVSSMetricPRCIA::High, mui,
+                                CVSSMetricS::Changed, mc, mi, ma);
+
     for (uint32_t i = 0; i < n->GetNDevices (); i++)
     {
         Ptr<NetDevice> dev = n->GetDevice (i);
@@ -108,7 +126,7 @@ double ASApplication::CalcScore()
     {
         double scores[3];
         m_cvss.CalcScore(scores);
-        m_score = scores[0]+scores[1]+scores[2] + rand() % 100;
+        m_score = 10/(m_ell * log(scores[0]+scores[1]+scores[2]));
         m_recalc_secore = false;
     }
     return m_score;
@@ -224,6 +242,7 @@ void ASApplication::RemoveOldNeighbors ()
 
     // 对下属发送心跳包,移除失效的下属
     it = m_subordinates.begin();
+    m_score_new = CalcScore();
     while (it != m_subordinates.end())
     {
         //获取最后通信时间到现在的时间
@@ -235,10 +254,16 @@ void ASApplication::RemoveOldNeighbors ()
         }    
         else 
         {
-            SendMessage(HEARTBEAT, it->neighbor_mac); // 发送心跳包
+            if(m_role >= CORE)
+            {
+                SendMessage(HEARTBEAT, it->neighbor_mac); // 发送心跳包
+                m_score_new += it->m_CVSS_score;
+            }
             ++it;
         }
     }
+
+    m_score_new /= (1+m_subordinates.size());
 
     if(m_subordinates.empty())
     {
@@ -254,11 +279,11 @@ void ASApplication::RemoveOldNeighbors ()
         m_vote_count = 0;
     }
 
-    NS_LOG_INFO("Node: " << m_app_id << " Time: " << Now().GetSeconds() << " Subordinates:" << m_subordinates.size());
     switch (m_role)
     {
     case HEAD:
         ++m_head_liveness;
+        NS_LOG_INFO(Now().GetSeconds() << " " << m_app_id << " " << m_score_new);
         break;
     case CORE:
         ++m_core_liveness;
@@ -302,12 +327,13 @@ void ASApplication::SetASDataTag(ASDataTag & tag, const uint32_t & type)
     tag.SetNodeId ( GetNode()->GetId() );
     tag.SetPosition ( GetNode()->GetObject<MobilityModel>()->GetPosition());
     tag.SetVelocity ( GetNode()->GetObject<MobilityModel>()->GetVelocity());
-    tag.SetScore(CalcScore());
+    tag.SetScore(m_score_new);
     tag.SetRole(m_role);
 }
 
 void ASApplication::SendMessage(const uint32_t msg_type, const Address & addr)
 {
+    ++m_msg_count;
     TxInfo tx;
     SetTxInfo(tx);
 
@@ -368,7 +394,7 @@ bool ASApplication::ReceivePacket (Ptr<NetDevice> device, Ptr<const Packet> pack
             // 方向不同，不是邻居，也不是下属
             return true;
         }
-        // NS_LOG_INFO ("ID: " << m_app_id << " Role: " << m_role << " Superior: " << m_current_superior << " 消息发送方的ID: " << tag.GetNodeId() << " 消息类型: " << tag.GetMessageType() << " 消息发送方的位置 " << tag.GetPosition() << " 消息发送时间: " << tag.GetTimestamp() << " 消息延迟="<< Now()-tag.GetTimestamp() << " CVSS=" << tag.GetScore());
+        // NS_LOG_INFO ("ID: " << m_app_id << " Role: " << m_role << " Superior: " << m_current_superior << " 消息发送方的ID: " << tag.GetNodeId() << " 消息类型: " << tag.GetMessageType() << " 消息发送方的位置 " << tag.GetPosition() << " 消息发送时间: " << tag.GetTimestamp() << " 消息延迟="<< Now()-tag.GetTimestamp() << " VSS=" << tag.GetScore());
 
         switch (m_role)
         {
@@ -404,8 +430,6 @@ void ASApplication::NoiseHandle(ASDataTag & tag, const Address & addr)
         break;
     case REQ_VOTE: 
         replyMessage = true;                
-        m_role = BORDER;
-        ++m_border_count;
         m_vote_count = 0;
         if(m_current_superior < 0 && (CalcScore() < tag.GetScore() || tag.GetRole() >= CORE))
         {
@@ -432,6 +456,8 @@ void ASApplication::NoiseHandle(ASDataTag & tag, const Address & addr)
     case HEARTBEAT:
         if(tag.GetRole() >= CORE)
         {
+            m_role = BORDER;
+            ++m_border_count;
             replyMessage = true;
             message_type = REPLY_HEARTBEAT;
             m_current_superior = tag.GetNodeId();

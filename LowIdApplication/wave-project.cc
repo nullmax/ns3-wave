@@ -79,7 +79,7 @@ int main (int argc, char *argv[])
     app_i->SetStartTime (Seconds (startTime));
     app_i->SetStopTime (Seconds (simTime));
     nodes.Get(i)->AddApplication (app_i);
-    NS_LOG_INFO ("Node: "<< i << " App added");
+    // NS_LOG_INFO ("Node: "<< i << " App added");
   }
 
   Simulator::Stop(Seconds(simTime));
@@ -99,4 +99,5 @@ int main (int argc, char *argv[])
   printf("Head %d %d %d\n", LowIdApplication::m_head_liveness_sum, LowIdApplication::m_head_count, LowIdApplication::m_head_liveness_sum/LowIdApplication::m_head_count);
   printf("Common %d %d %d\n", LowIdApplication::m_common_liveness_sum, LowIdApplication::m_common_count, LowIdApplication::m_common_liveness_sum/LowIdApplication::m_common_count);
   printf("Noise %d\n", LowIdApplication::m_noise_liveness_sum);
+  printf("MSG Count %d\n", LowIdApplication::m_msg_count);
 }

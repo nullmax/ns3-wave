@@ -33,8 +33,12 @@ public:
 	uint32_t GetMessageType();
 	void SetMessageType(uint32_t msg_type);
 
+	double GetScore();
+	void SetScore(double score);
+
 	LowIdDataTag();
 	LowIdDataTag(uint32_t node_id);
+
 	virtual ~LowIdDataTag();
 private:
 
@@ -43,7 +47,7 @@ private:
 	uint32_t m_clusterId; //节点的CID
 	Vector m_currentPosition; //节点的位置
 	Time m_timestamp; //数据包发送的时间
-
+	double m_CVSS_score; // 节点安全评分
 };
 }
 

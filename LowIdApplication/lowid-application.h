@@ -4,6 +4,7 @@
 #include "ns3/wave-net-device.h"
 #include "ns3/wifi-phy.h"
 #include "lowid-data-tag.h"
+#include "cvss.h"
 #include <vector>
 
 using namespace ns3;
@@ -14,6 +15,7 @@ using namespace ns3;
         Time last_beacon;
         uint32_t nodeId;
         uint32_t clusterId;
+        double m_score;
     } NeighborInformation;
 
     class LowIdApplication : public ns3::Application
@@ -27,6 +29,8 @@ using namespace ns3;
             static uint32_t m_common_count;
 
             static uint32_t m_noise_liveness_sum;
+
+            static uint32_t m_msg_count;
 
             static TypeId GetTypeId (void);
             virtual TypeId GetInstanceTypeId (void) const;
@@ -51,7 +55,10 @@ using namespace ns3;
 
             //收到数据包后更新邻居节点
             void UpdateNeighbor (Address addr, bool useTag, LowIdDataTag & tag);
-            
+
+             // 计算安全得分
+            double CalcScore();
+
             //打印邻居节点
             void PrintNeighbors ();
             
@@ -77,9 +84,15 @@ using namespace ns3;
             std::vector <NeighborInformation> m_GAMMA; //节点的所有邻居节点
             Time m_time_limit; //移除超过m_time_limit未通信的节点
             WifiMode m_mode; //wifi的模式
+            CVSS m_cvss; // CVSS计算模块
+            bool m_recalc_secore; //
+            double m_score; // total score;
+            double m_score_new; // avg total score;
 
             uint32_t m_nodeId;
             uint32_t m_clusterId;
+
+            uint32_t m_ell; //预估损失等级
 
             uint32_t m_head_liveness;
             uint32_t m_common_liveness;

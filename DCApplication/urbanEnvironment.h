@@ -101,6 +101,8 @@ typedef struct
     //DC算法
     uint32_t neighbor_counts; //无人驾驶车辆节点邻居节点个数
 
+    double m_score;
+
 }NeighborAutonomousVehicleInfo;
 
 /*

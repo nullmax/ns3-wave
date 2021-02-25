@@ -17,6 +17,8 @@ uint32_t LowIdApplication::m_common_count = 0;
 
 uint32_t LowIdApplication::m_noise_liveness_sum = 0;
 
+uint32_t LowIdApplication::m_msg_count = 0;
+
 NS_LOG_COMPONENT_DEFINE ("LowIdApplication");
 NS_OBJECT_ENSURE_REGISTERED(LowIdApplication);
 
@@ -46,6 +48,8 @@ LowIdApplication::LowIdApplication()
     m_time_limit = Seconds (5);
     m_mode = WifiMode("OfdmRate6MbpsBW10MHz");
 
+    m_recalc_secore = true;
+
     m_head_liveness = 0;
     m_common_liveness = 0;
     m_noise_liveness = 0;
@@ -63,6 +67,26 @@ void LowIdApplication::StartApplication()
     Ptr<Node> n = GetNode ();
 
     m_nodeId = n->GetId();
+    srand(m_nodeId);
+    int rand_tmp = rand() % 10;
+    m_ell = rand_tmp < 3 ? 1 : (rand_tmp < 7 ? 2 : 3);
+
+    rand_tmp = rand() % 10;
+    CVSSMetricRL rl = rand_tmp < 3 ? CVSSMetricRL::TemporaryFix : CVSSMetricRL::OfficialFix;
+    rand_tmp = rand() % 10;
+    CVSSMetricUI mui = rand_tmp < 3 ? CVSSMetricUI::None : CVSSMetricUI::Required;
+    rand_tmp = rand() % 10;
+    CVSSMetricPRCIA mc = rand_tmp < 9 ? CVSSMetricPRCIA::Low : CVSSMetricPRCIA::High;
+    rand_tmp = rand() % 10;
+    CVSSMetricPRCIA mi = rand_tmp < 7 ? CVSSMetricPRCIA::Low : CVSSMetricPRCIA::High;
+    rand_tmp = rand() % 10;
+    CVSSMetricPRCIA ma = rand_tmp < 7 ? CVSSMetricPRCIA::Low : CVSSMetricPRCIA::High;
+    m_cvss = CVSS(CVSSMetricAV::Adjacent, CVSSMetricAC::High, CVSSMetricPRCIA::High, CVSSMetricUI::Required,
+                                CVSSMetricS::Changed, CVSSMetricPRCIA::Low, CVSSMetricPRCIA::Low, CVSSMetricPRCIA::Low,
+                                CVSSMetricE::Unproven, rl, CVSSMetricRC::NotDefined,
+                                CVSSMetricCIAR::High, CVSSMetricCIAR::High, CVSSMetricCIAR::Medium,
+                                CVSSMetricAV::Local, CVSSMetricAC::Low, CVSSMetricPRCIA::High, mui,
+                                CVSSMetricS::Changed, mc, mi, ma);
     m_clusterId = UNKNOWN_CID;
 
     NeighborInformation new_n;
@@ -102,7 +126,19 @@ void LowIdApplication::StartApplication()
     Simulator::Schedule (Seconds (1), &LowIdApplication::RemoveOldNeighbors, this);
 
     Simulator::Schedule (Seconds (10), &LowIdApplication::ResetCID, this);
-    NS_LOG_INFO("App: " << m_nodeId);
+    // NS_LOG_INFO("App: " << m_nodeId);
+}
+
+double LowIdApplication::CalcScore()
+{   
+    if (m_recalc_secore)
+    {
+        double scores[3];
+        m_cvss.CalcScore(scores);
+        m_score = 10/(m_ell * log(scores[0]+scores[1]+scores[2]));
+        m_recalc_secore = false;
+    }
+    return m_score;
 }
 
 void LowIdApplication::SetBroadcastInterval (Time interval)
@@ -145,6 +181,7 @@ void LowIdApplication::RemoveIDInGAMMA(uint32_t id)
 
 void LowIdApplication::SendMessage(const Address & addr, const uint32_t msg_type)
 {
+    ++m_msg_count;
     //数据包参数
     TxInfo tx;
     tx.channelNumber = CCH; 
@@ -161,6 +198,7 @@ void LowIdApplication::SendMessage(const Address & addr, const uint32_t msg_type
     tag.SetNodeId (m_nodeId);
     tag.SetCID(m_clusterId);
     tag.SetPosition ( GetNode()->GetObject<MobilityModel>()->GetPosition());
+    tag.SetScore(m_score_new);
 
     //将tag加入数据包
     packet->AddPacketTag (tag);
@@ -207,7 +245,7 @@ bool LowIdApplication::ReceivePacket (Ptr<NetDevice> device, Ptr<const Packet> p
     {   
         uint32_t id = tag.GetNodeId();
         uint32_t cid = tag.GetCID();
-        NS_LOG_INFO ("ID: " << m_nodeId << "\t消息类型: " << tag.GetMessageType() << "\t消息发送方的ID: " << id << "\t消息发送方的CID: " << cid << "\t消息发送时间: " << tag.GetTimestamp() << "\t消息延迟="<< Now()-tag.GetTimestamp());
+        // NS_LOG_INFO ("ID: " << m_nodeId << "\t消息类型: " << tag.GetMessageType() << "\t消息发送方的ID: " << id << "\t消息发送方的CID: " << cid << "\t消息发送时间: " << tag.GetTimestamp() << "\t消息延迟="<< Now()-tag.GetTimestamp());
 
         switch (tag.GetMessageType())
         {
@@ -260,6 +298,7 @@ void LowIdApplication::UpdateNeighbor (Address addr, bool useTag, LowIdDataTag &
             {
                 it->nodeId = tag.GetNodeId();
                 it->clusterId = tag.GetCID();
+                it->m_score = tag.GetScore();
             }
             break;
         }
@@ -273,6 +312,7 @@ void LowIdApplication::UpdateNeighbor (Address addr, bool useTag, LowIdDataTag &
         {
             new_n.nodeId = tag.GetNodeId();
             new_n.clusterId = tag.GetCID();
+            new_n.m_score = tag.GetScore();
         }
         m_neighbors.push_back (new_n);
     }
@@ -327,7 +367,7 @@ void LowIdApplication::PrintNeighbors ()
 
 void LowIdApplication::RemoveOldNeighbors ()
 {
-
+    m_score_new = CalcScore();
     for (std::vector<NeighborInformation>::iterator it = m_neighbors.begin(); it != m_neighbors.end();)
     {
         //获取最后通信时间到现在的时间
@@ -343,10 +383,20 @@ void LowIdApplication::RemoveOldNeighbors ()
             break;
         }
         else
-        {
+        {   
+            if(m_nodeId == m_clusterId)
+            {
+                m_score_new += it->m_score;
+            }
             ++it;
         }
     }
+    
+    if(m_nodeId == m_clusterId)
+    {
+        m_score_new /= m_neighbors.size() + 1;
+    }
+
     for (std::vector<NeighborInformation>::iterator it = m_GAMMA.begin(); it != m_GAMMA.end();)
     {
         //获取最后通信时间到现在的时间
@@ -371,6 +421,7 @@ void LowIdApplication::RemoveOldNeighbors ()
     if(m_nodeId == m_clusterId)
     {
         ++m_head_liveness;
+        NS_LOG_INFO(Now().GetSeconds() << " " << m_nodeId << " " << m_score_new);
     }
     else if(m_clusterId != UNKNOWN_CID)
     {

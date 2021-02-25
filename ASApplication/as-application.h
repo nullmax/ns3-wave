@@ -61,6 +61,8 @@ using namespace ns3;
             static uint32_t m_border_count;
             static uint32_t m_border_liveness_sum;
             static uint32_t m_noise_liveness_sum;
+            
+            static uint32_t m_msg_count;
 
         private:
             //StartApplication函数是应用启动后第一个调用的函数
@@ -91,6 +93,7 @@ using namespace ns3;
             CVSS m_cvss; // CVSS计算模块
             bool m_recalc_secore; //
             double m_score; // total score;
+            double m_score_new; // avg total score;
             uint32_t m_role; //车群角色
             uint32_t m_vote_count; // 投票计数
             uint32_t m_vote_failure_count; // 竞选失败计数
@@ -99,6 +102,8 @@ using namespace ns3;
             uint32_t m_core_liveness;
             uint32_t m_border_liveness;
             uint32_t m_noise_liveness;
+            
+            uint32_t m_ell; //预估损失等级
             int m_current_superior;  //
 
             static const int minPts = 5;

@@ -45,6 +45,9 @@ public:
     uint32_t GetManagedNodeCounts();
 	uint32_t GetAVGRole();
 	uint32_t GetHop2LeaderNode();
+
+	double GetScore();
+	void SetScore(double Score);
 	
 
 	//构造函数和析构函数
@@ -90,6 +93,7 @@ private:
 	//车辆到引领节点的跳数
 	uint32_t Hop2LeaderNode;
 
+	double m_score;
 };
 
 

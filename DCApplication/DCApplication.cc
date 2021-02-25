@@ -9,6 +9,7 @@ int DCApplication::head_count = 0;
 int DCApplication::head_sum = 0;
 int DCApplication::common_count = 0;
 int DCApplication::common_sum = 0;
+int DCApplication::m_msg_count = 0;
 
 NS_LOG_COMPONENT_DEFINE("DCApplication");
 NS_OBJECT_ENSURE_REGISTERED(DCApplication);
@@ -27,7 +28,10 @@ TypeId DCApplication::GetInstanceTypeId() const
 }
 
 //构造函数
-DCApplication::DCApplication(){}
+DCApplication::DCApplication()
+{
+    m_recalc_secore = true;
+}
 
 //析构函数
 DCApplication::~DCApplication()
@@ -96,6 +100,27 @@ void DCApplication::SetMyManagedNodeOutofcontactTimeLimit(Time limit)
 void DCApplication::StartApplication()
 {
     Ptr<Node> n = GetNode ();
+    srand(n->GetId());
+    int rand_tmp = rand() % 10;
+    m_ell = rand_tmp < 3 ? 1 : (rand_tmp < 7 ? 2 : 3);
+
+    rand_tmp = rand() % 10;
+    CVSSMetricRL rl = rand_tmp < 3 ? CVSSMetricRL::TemporaryFix : CVSSMetricRL::OfficialFix;
+    rand_tmp = rand() % 10;
+    CVSSMetricUI mui = rand_tmp < 3 ? CVSSMetricUI::None : CVSSMetricUI::Required;
+    rand_tmp = rand() % 10;
+    CVSSMetricPRCIA mc = rand_tmp < 9 ? CVSSMetricPRCIA::Low : CVSSMetricPRCIA::High;
+    rand_tmp = rand() % 10;
+    CVSSMetricPRCIA mi = rand_tmp < 7 ? CVSSMetricPRCIA::Low : CVSSMetricPRCIA::High;
+    rand_tmp = rand() % 10;
+    CVSSMetricPRCIA ma = rand_tmp < 7 ? CVSSMetricPRCIA::Low : CVSSMetricPRCIA::High;
+    m_cvss = CVSS(CVSSMetricAV::Adjacent, CVSSMetricAC::High, CVSSMetricPRCIA::High, CVSSMetricUI::Required,
+                                CVSSMetricS::Changed, CVSSMetricPRCIA::Low, CVSSMetricPRCIA::Low, CVSSMetricPRCIA::Low,
+                                CVSSMetricE::Unproven, rl, CVSSMetricRC::NotDefined,
+                                CVSSMetricCIAR::High, CVSSMetricCIAR::High, CVSSMetricCIAR::Medium,
+                                CVSSMetricAV::Local, CVSSMetricAC::Low, CVSSMetricPRCIA::High, mui,
+                                CVSSMetricS::Changed, mc, mi, ma);
+
     for (uint32_t i = 0; i < n->GetNDevices (); i++)
     {
         Ptr<NetDevice> dev = n->GetDevice (i);
@@ -130,6 +155,18 @@ void DCApplication::StartApplication()
     {
         NS_FATAL_ERROR ("There's no WaveNetDevice in your node");
     }
+}
+
+double DCApplication::CalcScore()
+{   
+    if (m_recalc_secore)
+    {
+        double scores[3];
+        m_cvss.CalcScore(scores);
+        m_score = 10/(m_ell * log(scores[0]+scores[1]+scores[2]));
+        m_recalc_secore = false;
+    }
+    return m_score;
 }
 
 //tag=HELLO：车辆节点广播数据包，用于获取周围邻居节点的信息
@@ -336,11 +373,20 @@ void DCApplication::IterateRemoveOldones()
         }
     }
     
+    m_score_new = CalcScore();
+    
     //更新引领节点和普通节点的生存时间
     if(iAmLeader)
     {
         leaderduration +=Seconds(1);   
+        for (std::vector<NeighborAutonomousVehicleInfo>::iterator LNit = m_manangeAutonomousVehicles.begin(); LNit != m_manangeAutonomousVehicles.end();LNit++)
+        {
+            m_score_new += LNit->m_score;
+        }
+        m_score_new /= m_manangeAutonomousVehicles.size() + 1;
+        cout << Now().GetSeconds() << " " << GetNode()->GetId() << " " << m_score_new << endl;
     }
+
     if(iAmCommon)
     {
         commonduration +=Seconds(1);   
@@ -366,6 +412,7 @@ void DCApplication::IterateRemoveOldones()
 //工具函数，向targetAddr发送messageType类型的消息
 bool DCApplication::SendMessageToaNode(uint32_t messageType, Address targetAddr)
 {
+    ++m_msg_count;
     //发送数据包后，更新已发送数据包总量
     dataPacketsCounts += m_packetSize;
     
@@ -392,6 +439,8 @@ bool DCApplication::SendMessageToaNode(uint32_t messageType, Address targetAddr)
                                             m_manangeAutonomousVehicles.size(),
                                                     m_autonomousVehicleGroupRoles,
                                                         m_hopCountsToLeaderNode);
+                                                        
+    tag.SetScore(m_score_new);
 
     packet->AddPacketTag (tag);
     return m_waveDevice->SendX (packet, targetAddr, 0x88dc, tx);
@@ -452,7 +501,7 @@ bool DCApplication::ReceivePacket (Ptr<NetDevice> device, Ptr<const Packet> pack
                     tag.GetTimestamp(),
                         tag.GetPosition(),
                             tag.GetVelocity(),
-                                tag.GetManagedNodeCounts());
+                                tag.GetManagedNodeCounts(), tag.GetScore());
         }
         else if(getTagType==ORDINARYUP2CORE)
         {
@@ -567,7 +616,7 @@ void DCApplication::UpdateMyLeaderNodeStatus(Address addr, Time beaconTime, Vect
 
 //接收到被管理节点发送的心跳包后，更新被管理节点的信息
 void DCApplication::UpdateMyManagedNodeStatus(Address addr, Time beaconTime, Vector currentPosition,
-        Vector currentVelocity, uint32_t itsmanagedNodeCounts)
+        Vector currentVelocity, uint32_t itsmanagedNodeCounts, double Score)
 {
     for (std::vector<NeighborAutonomousVehicleInfo>::iterator it = m_manangeAutonomousVehicles.begin(); it != m_manangeAutonomousVehicles.end(); it++ )
     {
@@ -577,6 +626,7 @@ void DCApplication::UpdateMyManagedNodeStatus(Address addr, Time beaconTime, Vec
             it->neighbor_currentPosition = currentPosition;
             it->neighbor_currentVelocity = currentVelocity;
             it->managedNodeCounts = itsmanagedNodeCounts;
+            it->m_score = Score;
             break;
         }
     }
@@ -676,7 +726,7 @@ void DCApplication::PrintGroupInfo()
     {
         nei_manage_counts +=it->managedNodeCounts;
     }
-        cout<<Now().GetSeconds()<<" "<<nei_manage_counts<<endl;
+        // cout<<Now().GetSeconds()<<" "<<nei_manage_counts<<endl;
     }
 
     Simulator::Schedule (Seconds(1.0), &DCApplication::PrintGroupInfo, this);

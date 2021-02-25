@@ -37,7 +37,7 @@ TypeId LowIdDataTag::GetInstanceTypeId (void) const
 uint32_t LowIdDataTag::GetSerializedSize (void) const
 {
 	//对应车辆的位置、发送数据包的时间、车辆的ID
-	return sizeof(Vector) + sizeof (ns3::Time) + 3 * sizeof(uint32_t);
+	return sizeof(Vector) + sizeof (ns3::Time) + 3 * sizeof(uint32_t) + sizeof(double);
 }
 
 //注意Serialize中的顺序要和Deserialize中的一致
@@ -58,6 +58,8 @@ void LowIdDataTag::Serialize (TagBuffer i) const
 	i.WriteU32(m_clusterId);
 
 	i.WriteU32(m_messagetype);
+
+	i.WriteDouble(m_CVSS_score);
 }
 
 
@@ -78,6 +80,8 @@ void LowIdDataTag::Deserialize (TagBuffer i)
 	m_clusterId = i.ReadU32();
 
 	m_messagetype = i.ReadU32();
+
+	m_CVSS_score = i.ReadDouble();
 }
 
 void LowIdDataTag::Print (std::ostream &os) const
@@ -125,6 +129,16 @@ uint32_t LowIdDataTag::GetMessageType()
 void LowIdDataTag::SetMessageType(uint32_t msg_type)
 {
 	m_messagetype = msg_type;
+}
+
+double LowIdDataTag::GetScore()
+{
+	return m_CVSS_score;
+}
+
+void LowIdDataTag::SetScore(double Score)
+{
+	m_CVSS_score = Score;
 }
 
 }

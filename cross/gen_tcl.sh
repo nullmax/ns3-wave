@@ -1,9 +1,12 @@
+#!/bin/bash
+
 # clean up
 rm -rf cross*/
 rm trace*.xml
 rm *.tcl
-
 echo "clean up"
+
+export SUMO_HOME=/usr/share/sumo
 
 for((i=0;i<6;i++))
 do

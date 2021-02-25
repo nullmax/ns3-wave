@@ -9,6 +9,8 @@
 #include "ns3/wave-net-device.h"
 #include "ns3/wifi-phy.h"
 
+#include "cvss.h"
+
 //guiyuan
 #include "urbanEnvironment.h"
 #include "customDataTag.h"
@@ -25,6 +27,7 @@ public:
     static int head_sum;
     static int common_count;
     static int common_sum;
+    static int m_msg_count;
 
     static TypeId GetTypeId (void);
     virtual TypeId GetInstanceTypeId (void) const;
@@ -88,7 +91,7 @@ public:
 
     //接收到被管理节点发送的心跳包后，更新被管理节点的信息
     void UpdateMyManagedNodeStatus(Address addr, Time beaconTime, Vector currentPosition,
-        Vector currentVelocity, uint32_t itsmanagedNodeCounts);
+        Vector currentVelocity, uint32_t itsmanagedNodeCounts, double Score);
 
     //父节点成为CH后，子节点更新状态
     // void MyfatherUpIAlsoUp();
@@ -144,6 +147,9 @@ public:
     Time becomecommontime = Seconds(0);
     Time commonduration = Seconds(0);
 
+    // 计算安全得分
+    double CalcScore();
+
 private:
     //这个函数将在应用开始后被调用
     void StartApplication();
@@ -185,6 +191,12 @@ private:
 
     //车群形成所使用的数据包总量
     uint32_t dataPacketsCounts;
+
+    CVSS m_cvss; // CVSS计算模块
+    bool m_recalc_secore; //
+    double m_score; // total score;
+    double m_score_new; // avg total score;
+    uint32_t m_ell; //预估损失等级
     
 };
 

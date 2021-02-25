@@ -109,5 +109,6 @@ int main(int argc, char *argv[])
     printf("DC sum cout avg\n");
     printf("Head %d %d %d\n", DCApplication::head_sum, DCApplication::head_count, DCApplication::head_sum/DCApplication::head_count);
     printf("Common %d %d %d\n", DCApplication::common_sum, DCApplication::common_count, DCApplication::common_sum/DCApplication::common_count);
+    printf("MSG Count %d\n", DCApplication::m_msg_count);
     return 0;
 }

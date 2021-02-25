@@ -28,10 +28,10 @@ int main (int argc, char *argv[])
   LogComponentEnable("ASApplicationExample", LOG_LEVEL_INFO);
   LogComponentEnable("ASApplication", LOG_LEVEL_INFO);
 
-  std::string m_traceFile = "/home/mak/Code/ns3-wave/cross/mobility10.tcl";
-  uint32_t nNodes = 60;//节点数目
-  double startTime = 0; //仿真时间
-  double simTime = 60; //仿真时间
+  std::string m_traceFile = "/mnt/d/Code/ns3-wave/cross/mobility10.tcl";
+  uint32_t nNodes = 200;//节点数目
+  double startTime = 550; //仿真时间
+  double simTime = 750; //仿真时间
   double interval = 1; //广播的时间间隔
 
   CommandLine cmd;
@@ -108,4 +108,5 @@ int main (int argc, char *argv[])
   printf("Core %d %d %d\n", ASApplication::m_core_liveness_sum, ASApplication::m_core_count, ASApplication::m_core_liveness_sum/ASApplication::m_core_count);
   printf("Border %d %d %d\n", ASApplication::m_border_liveness_sum, ASApplication::m_border_count, ASApplication::m_border_liveness_sum/ASApplication::m_border_count);
   printf("Noise %d\n", ASApplication::m_noise_liveness_sum);
+  printf("MSG Count %d\n", ASApplication::m_msg_count);
 }

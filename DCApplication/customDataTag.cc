@@ -97,7 +97,8 @@ uint32_t CustomDataTag::GetSerializedSize (void) const
 									+ sizeof(double)
 										+ sizeof(uint32_t)
 											+ sizeof(uint32_t)
-												+ sizeof(uint32_t); 
+												+ sizeof(uint32_t)
+													+sizeof(double); 
 }
 
 /**
@@ -134,6 +135,8 @@ void CustomDataTag::Serialize (TagBuffer i) const
 	//无人驾驶车辆到引领节点的跳数
 	i.WriteU32(Hop2LeaderNode);
 
+	i.WriteDouble(m_score);
+
 }
 /** This function reads data from a buffer and store it in class's instance variables.
  */
@@ -167,6 +170,7 @@ void CustomDataTag::Deserialize (TagBuffer i)
 	AVGRole = i.ReadU32();
 	//无人驾驶车辆到引领节点的跳数
 	Hop2LeaderNode = i.ReadU32();
+	m_score = i.ReadDouble();
 }
 /**
  * This function can be used with ASCII traces if enabled. 
@@ -270,4 +274,14 @@ uint32_t CustomDataTag::GetAVGRole()
 uint32_t CustomDataTag::GetHop2LeaderNode()
 {
 	return Hop2LeaderNode;
+}
+
+double CustomDataTag::GetScore()
+{
+	return m_score;
+}
+
+void CustomDataTag::SetScore(double Score)
+{
+	m_score = Score;
 }
